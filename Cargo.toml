@@ -1,0 +1,19 @@
+[package]
+name = "dit"
+version = "0.1.0"
+edition = "2021"
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+anyhow = "1.0.79"
+frankenstein = { version = "0.30.3", default-features = false, features = ["async-http-client"] }
+futures = "0.3.30"
+roux = "2.2.11"
+roux-stream = "0.2.0"
+rusqlite = "0.30.0"
+serde = { version = "1.0.196", features = ["derive"] }
+shuttle-persist = "0.39.0"
+shuttle-runtime = "0.39.0"
+shuttle-secrets = "0.39.0"
+tokio = { version = "1.36.0", features = ["full"] }
+tokio-retry = "0.3.0"
