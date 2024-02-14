@@ -39,6 +39,7 @@ async fn execute(persist: PersistInstance, secret_store: SecretStore) -> anyhow:
     // initializations
     let keywords = secret_store.get("KEYWORDS").unwrap();
     let keywords = keywords.split(",").collect::<Vec<&str>>();
+    println!("Monitoring for keywords: {:?}", keywords);
     let subreddit_name = secret_store.get("SUBREDDIT").unwrap();
     let subreddit = Subreddit::new(&subreddit_name);
     let api = AsyncApi::new(&secret_store.get("TELEGRAM_TOKEN").unwrap());
