@@ -3,13 +3,9 @@ use std::{collections::HashSet, time::Duration};
 use frankenstein::{
     AsyncApi, AsyncTelegramApi, GetUpdatesParams, SendMessageParams, UpdateContent,
 };
-use futures::StreamExt as _;
 use roux::Reddit;
-use roux_stream::stream_submissions;
 use shuttle_persist::PersistInstance;
 use shuttle_secrets::SecretStore;
-use tokio::select;
-use tokio_retry::strategy::ExponentialBackoff;
 
 #[shuttle_runtime::main]
 async fn main(
