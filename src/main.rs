@@ -51,47 +51,67 @@ async fn execute(persist: PersistInstance, secret_store: SecretStore) -> anyhow:
         .await?;
 
     let api = AsyncApi::new(&secret_store.get("TELEGRAM_TOKEN").unwrap());
-    let mut offset = 0;
     let mut subscribers = persist
         .load::<HashSet<i64>>("subscribers")
         .unwrap_or_default();
 
-    // stream for reddit posts
-    let retry_strategy = ExponentialBackoff::from_millis(5).factor(100).take(3);
-    let (mut reddit_stream, _reddit_join_handle) = stream_submissions(
-        &subreddit,
-        Duration::from_secs(30),
-        retry_strategy,
-        Some(Duration::from_secs(10)),
-    );
+    let mut offset = persist.load::<i64>("offset").unwrap_or(0);
+    let mut last_reddit_id: Option<Vec<u8>> = None;
 
     loop {
-        select! {
-            // Handle Telegram notifications
-            new_offset = handle_requests(&persist, &api, offset, &mut subscribers) => {
-                offset = new_offset.unwrap();
-            },
+        match handle_requests(&persist, &api, offset, &mut subscribers).await {
+            Ok(new_offset) => {
+                offset = new_offset;
+                persist.save("offset", &offset).unwrap();
+            }
+            Err(e) => {
+                eprintln!("Error handling requests: {:?}", e);
+            }
+        }
 
-            // Handle new Reddit posts
-            post = reddit_stream.next() => {
-                if let Some(Ok(submission)) = post {
-                    if contains_any(&submission.title, keywords.clone()) {
-                        println!("sending message: {}", submission.title);
-                        for &chat_id in &subscribers {
-                            let mut message = format!("{}", submission.title);
-                            if let Some(ref url) = submission.url {
-                                message = format!("{}\n{}", message, url);
-                            }
-                            let send_message_params = SendMessageParams::builder()
-                                .chat_id(chat_id)
-                                .text(message)
-                                .build();
-                            let _ = api.send_message(&send_message_params).await;
+        match subreddit.latest(20, None).await {
+            Ok(posts) => {
+                let last_id = last_reddit_id.clone();
+                let submissions = posts.data.children.iter().filter(|s| {
+                    let id = base36::decode(&s.data.id).unwrap_or(vec![]);
+                    let matches = if let Some(ref last_reddit_id) = last_id {
+                        id.cmp(last_reddit_id) == std::cmp::Ordering::Greater
+                    } else {
+                        true
+                    };
+                    matches && contains_any(&s.data.title, keywords.clone())
+                });
+
+                last_reddit_id = posts
+                    .data
+                    .children
+                    .iter()
+                    .filter_map(|s| base36::decode(&s.data.id).ok())
+                    .max();
+
+                println!("Received {} submissions", posts.data.children.len());
+                for s in submissions {
+                    let submission = &s.data;
+                    println!("sending message: {}", submission.title);
+                    for &chat_id in &subscribers {
+                        let mut message = format!("{}", submission.title);
+                        if let Some(ref url) = submission.url {
+                            message = format!("{}\n{}", message, url);
                         }
+                        let send_message_params = SendMessageParams::builder()
+                            .chat_id(chat_id)
+                            .text(message)
+                            .build();
+                        let _ = api.send_message(&send_message_params).await;
                     }
                 }
-            },
+            }
+            Err(e) => {
+                eprintln!("Error fetching posts: {:?}", e);
+            }
         }
+
+        tokio::time::sleep(Duration::from_secs(30)).await;
     }
 }
 
