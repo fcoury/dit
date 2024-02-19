@@ -4,7 +4,7 @@ use frankenstein::{
     AsyncApi, AsyncTelegramApi, GetUpdatesParams, SendMessageParams, UpdateContent,
 };
 use futures::StreamExt as _;
-use roux::{Reddit, Subreddit};
+use roux::Reddit;
 use roux_stream::stream_submissions;
 use shuttle_persist::PersistInstance;
 use shuttle_secrets::SecretStore;
