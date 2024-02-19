@@ -4,7 +4,7 @@ use frankenstein::{
     AsyncApi, AsyncTelegramApi, GetUpdatesParams, SendMessageParams, UpdateContent,
 };
 use futures::StreamExt as _;
-use roux::Subreddit;
+use roux::{Reddit, Subreddit};
 use roux_stream::stream_submissions;
 use shuttle_persist::PersistInstance;
 use shuttle_secrets::SecretStore;
@@ -37,11 +37,23 @@ impl shuttle_runtime::Service for TelegramService {
 
 async fn execute(persist: PersistInstance, secret_store: SecretStore) -> anyhow::Result<()> {
     // initializations
+    let client_id = secret_store.get("REDDIT_CLIENT_ID").unwrap();
+    let client_secret = secret_store.get("REDDIT_CLIENT_SECRET").unwrap();
+    let username = secret_store.get("REDDIT_USERNAME").unwrap();
+    let password = secret_store.get("REDDIT_PASSWORD").unwrap();
     let keywords = secret_store.get("KEYWORDS").unwrap();
     let keywords = keywords.split(",").collect::<Vec<&str>>();
-    println!("Monitoring for keywords: {:?}", keywords);
     let subreddit_name = secret_store.get("SUBREDDIT").unwrap();
-    let subreddit = Subreddit::new(&subreddit_name);
+
+    println!("Monitoring for keywords: {:?}", keywords);
+    println!("Monitoring subreddit {}", subreddit_name);
+
+    let subreddit = Reddit::new("macos:dit:0.1.0 (by /u/fcoury)", &client_id, &client_secret)
+        .username(&username)
+        .password(&password)
+        .subreddit(&subreddit_name)
+        .await?;
+
     let api = AsyncApi::new(&secret_store.get("TELEGRAM_TOKEN").unwrap());
     let mut offset = 0;
     let mut subscribers = persist
