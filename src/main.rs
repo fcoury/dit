@@ -5,12 +5,12 @@ use frankenstein::{
 };
 use roux::Reddit;
 use shuttle_persist::PersistInstance;
-use shuttle_secrets::SecretStore;
+use shuttle_runtime::SecretStore;
 
 #[shuttle_runtime::main]
 async fn main(
     #[shuttle_persist::Persist] persist: PersistInstance,
-    #[shuttle_secrets::Secrets] secret_store: SecretStore,
+    #[shuttle_runtime::Secrets] secret_store: SecretStore,
 ) -> Result<TelegramService, shuttle_runtime::Error> {
     Ok(TelegramService {
         persist,

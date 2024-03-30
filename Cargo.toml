@@ -11,5 +11,5 @@ frankenstein = { version = "0.30.3", default-features = false, features = ["asyn
 roux = "2.2.11"
 shuttle-persist = "0.42.0"
 shuttle-runtime = "0.42.0"
-shuttle-secrets = "0.42.0"
+# shuttle-secrets = "0.42.0" -- moved to shuttle-runtimte
 tokio = { version = "1.36.0", features = ["full"] }
