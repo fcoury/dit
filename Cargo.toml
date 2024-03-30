@@ -9,7 +9,7 @@ anyhow = "1.0.79"
 base36 = "0.0.1"
 frankenstein = { version = "0.30.3", default-features = false, features = ["async-http-client"] }
 roux = "2.2.11"
-shuttle-persist = "0.39.0"
-shuttle-runtime = "0.39.0"
-shuttle-secrets = "0.39.0"
+shuttle-persist = "0.41.0"
+shuttle-runtime = "0.41.0"
+shuttle-secrets = "0.41.0"
 tokio = { version = "1.36.0", features = ["full"] }
