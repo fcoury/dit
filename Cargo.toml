@@ -7,9 +7,8 @@ edition = "2021"
 [dependencies]
 anyhow = "1.0.79"
 base36 = "0.0.1"
+dotenv = "0.15.0"
 frankenstein = { version = "0.30.3", default-features = false, features = ["async-http-client"] }
 roux = "2.2.11"
-shuttle-persist = "0.42.0"
-shuttle-runtime = "0.42.0"
-# shuttle-secrets = "0.42.0" -- moved to shuttle-runtimte
+sqlx = { version = "0.7", features = [ "postgres", "runtime-tokio", "tls-native-tls" ] }
 tokio = { version = "1.36.0", features = ["full"] }

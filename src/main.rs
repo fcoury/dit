@@ -1,46 +1,32 @@
-use std::{collections::HashSet, time::Duration};
+use std::{collections::HashSet, env, time::Duration};
 
 use frankenstein::{
     AsyncApi, AsyncTelegramApi, GetUpdatesParams, SendMessageParams, UpdateContent,
 };
 use roux::Reddit;
-use shuttle_persist::PersistInstance;
-use shuttle_runtime::SecretStore;
+use sqlx::postgres::PgPoolOptions;
 
-#[shuttle_runtime::main]
-async fn main(
-    #[shuttle_persist::Persist] persist: PersistInstance,
-    #[shuttle_runtime::Secrets] secret_store: SecretStore,
-) -> Result<TelegramService, shuttle_runtime::Error> {
-    Ok(TelegramService {
-        persist,
-        secret_store,
-    })
-}
+#[tokio::main]
+async fn main() -> anyhow::Result<()> {
+    dotenv::dotenv().ok();
 
-struct TelegramService {
-    persist: PersistInstance,
-    secret_store: SecretStore,
-}
-
-#[shuttle_runtime::async_trait]
-impl shuttle_runtime::Service for TelegramService {
-    async fn bind(self, _addr: std::net::SocketAddr) -> Result<(), shuttle_runtime::Error> {
-        execute(self.persist, self.secret_store).await?;
-        Ok(())
-    }
-}
-
-async fn execute(persist: PersistInstance, secret_store: SecretStore) -> anyhow::Result<()> {
     // initializations
-    let client_id = secret_store.get("REDDIT_CLIENT_ID").unwrap();
-    let client_secret = secret_store.get("REDDIT_CLIENT_SECRET").unwrap();
-    let username = secret_store.get("REDDIT_USERNAME").unwrap();
-    let password = secret_store.get("REDDIT_PASSWORD").unwrap();
-    let keywords = secret_store.get("KEYWORDS").unwrap();
+    let client_id = env::var("REDDIT_CLIENT_ID").unwrap();
+    let client_secret = env::var("REDDIT_CLIENT_SECRET").unwrap();
+    let username = env::var("REDDIT_USERNAME").unwrap();
+    let password = env::var("REDDIT_PASSWORD").unwrap();
+    let keywords = env::var("KEYWORDS").unwrap();
     let keywords = keywords.split(",").collect::<Vec<&str>>();
-    let subreddit_name = secret_store.get("SUBREDDIT").unwrap();
+    let subreddit_name = env::var("SUBREDDIT").unwrap();
 
+    // database
+    let pool = PgPoolOptions::new()
+        .max_connections(5)
+        .connect(&env::var("DATABASE_URL").unwrap())
+        .await?;
+
+    // Run migrations
+    sqlx::migrate!("./migrations").run(&pool).await?;
     println!("Monitoring for keywords: {:?}", keywords);
     println!("Monitoring subreddit {}", subreddit_name);
 
@@ -50,19 +36,19 @@ async fn execute(persist: PersistInstance, secret_store: SecretStore) -> anyhow:
         .subreddit(&subreddit_name)
         .await?;
 
-    let api = AsyncApi::new(&secret_store.get("TELEGRAM_TOKEN").unwrap());
-    let mut subscribers = persist
-        .load::<HashSet<i64>>("subscribers")
-        .unwrap_or_default();
+    let api = AsyncApi::new(&env::var("TELEGRAM_TOKEN").unwrap());
 
-    let mut offset = persist.load::<i64>("offset").unwrap_or(0);
+    let mut offset = get(&pool, "offset", "0".to_string())
+        .await?
+        .parse::<i64>()?;
     let mut last_reddit_id: Option<Vec<u8>> = None;
 
     loop {
-        match handle_requests(&persist, &api, offset, &mut subscribers).await {
+        match handle_requests(&pool, &api, offset).await {
             Ok(new_offset) => {
                 offset = new_offset;
-                persist.save("offset", &offset).unwrap();
+                println!("Setting new offset to {}", offset);
+                set(&pool, "offset", &offset.to_string()).await?;
             }
             Err(e) => {
                 eprintln!("Error handling requests: {:?}", e);
@@ -92,7 +78,12 @@ async fn execute(persist: PersistInstance, secret_store: SecretStore) -> anyhow:
                 println!("Received {} submissions", posts.data.children.len());
                 for s in submissions {
                     let submission = &s.data;
-                    println!("sending message: {}", submission.title);
+                    let subscribers = get_subscribers(&pool).await?;
+                    println!(
+                        "sending message to {} subscribers: {}",
+                        subscribers.len(),
+                        submission.title
+                    );
                     for &chat_id in &subscribers {
                         let mut message = format!("{}", submission.title);
                         if let Some(ref url) = submission.url {
@@ -115,12 +106,60 @@ async fn execute(persist: PersistInstance, secret_store: SecretStore) -> anyhow:
     }
 }
 
-async fn handle_requests(
-    persist: &PersistInstance,
-    api: &AsyncApi,
-    offset: i64,
-    subscribers: &mut HashSet<i64>,
-) -> anyhow::Result<i64> {
+async fn get(pool: &sqlx::PgPool, key: &str, default: String) -> anyhow::Result<String> {
+    let row: Option<(String,)> = sqlx::query_as("SELECT value FROM settings WHERE key = $1")
+        .bind(key)
+        .fetch_optional(pool)
+        .await?;
+
+    match row {
+        Some(x) => Ok(x.0),
+        None => Ok(default),
+    }
+}
+
+async fn set(pool: &sqlx::PgPool, key: &str, value: &str) -> anyhow::Result<()> {
+    sqlx::query(
+        r#"
+        INSERT INTO settings (key, value) VALUES ($1, $2)
+        ON CONFLICT (key) DO UPDATE 
+        SET value = $2
+        "#,
+    )
+    .bind(key)
+    .bind(value)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+async fn get_subscribers(pool: &sqlx::PgPool) -> anyhow::Result<HashSet<i64>> {
+    let subscribers = sqlx::query_as("SELECT chat_id FROM subscriber0s")
+        .fetch_all(pool)
+        .await?
+        .into_iter()
+        .map(|row: (i64,)| row.0)
+        .collect::<HashSet<i64>>();
+    Ok(subscribers)
+}
+
+async fn add_subscriber(pool: &sqlx::PgPool, chat_id: i64) -> anyhow::Result<()> {
+    sqlx::query("INSERT INTO subscribers (chat_id) VALUES ($1)")
+        .bind(chat_id)
+        .execute(pool)
+        .await?;
+    Ok(())
+}
+
+async fn remove_subscriber(pool: &sqlx::PgPool, chat_id: i64) -> anyhow::Result<()> {
+    sqlx::query("DELETE FROM subscribers WHERE chat_id = $1")
+        .bind(chat_id)
+        .execute(pool)
+        .await?;0
+    Ok(())
+}
+
+async fn handle_requests(pool: &sqlx::PgPool, api: &AsyncApi, offset: i64) -> anyhow::Result<i64> {
     let get_updates_params = GetUpdatesParams::builder()
         .offset(offset)
         .timeout(10u32)
@@ -138,16 +177,14 @@ async fn handle_requests(
                             .chat_id(message.chat.id)
                             .text("Subscribed to mechmarket".to_string())
                             .build();
-                        subscribers.insert(message.chat.id);
-                        persist.save("subscribers", &subscribers).unwrap();
+                        add_subscriber(&pool, message.chat.id).await?;
                         let _ = api.send_message(&reply).await;
                     } else if text == "/unsubscribe" {
                         let reply = SendMessageParams::builder()
                             .chat_id(message.chat.id)
                             .text("Unsubscribed from mechmarket".to_string())
                             .build();
-                        subscribers.remove(&message.chat.id);
-                        persist.save("subscribers", &subscribers).unwrap();
+                        remove_subscriber(&pool, message.chat.id).await?;
                         let _ = api.send_message(&reply).await;
                     }
                 }
