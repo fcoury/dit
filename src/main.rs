@@ -134,7 +134,7 @@ async fn set(pool: &sqlx::PgPool, key: &str, value: &str) -> anyhow::Result<()> 
 }
 
 async fn get_subscribers(pool: &sqlx::PgPool) -> anyhow::Result<HashSet<i64>> {
-    let subscribers = sqlx::query_as("SELECT chat_id FROM subscriber0s")
+    let subscribers = sqlx::query_as("SELECT chat_id FROM subscribers")
         .fetch_all(pool)
         .await?
         .into_iter()
