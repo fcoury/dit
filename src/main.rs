@@ -155,7 +155,7 @@ async fn remove_subscriber(pool: &sqlx::PgPool, chat_id: i64) -> anyhow::Result<
     sqlx::query("DELETE FROM subscribers WHERE chat_id = $1")
         .bind(chat_id)
         .execute(pool)
-        .await?;0
+        .await?;
     Ok(())
 }
 
