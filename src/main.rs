@@ -3,7 +3,7 @@ use std::{collections::HashSet, env, time::Duration};
 use frankenstein::{
     AsyncApi, AsyncTelegramApi, GetUpdatesParams, SendMessageParams, UpdateContent,
 };
-use roux::Reddit;
+use roux::{response::BasicThing, submission::SubmissionData, Reddit};
 use sqlx::postgres::PgPoolOptions;
 
 #[tokio::main]
@@ -65,7 +65,8 @@ async fn main() -> anyhow::Result<()> {
                     } else {
                         true
                     };
-                    matches && contains_any(&s.data.title, keywords.clone())
+                    // matches && contains_any(&s.data.title, keywords.clone())
+                    matches && sub_matches(s, keywords.clone())
                 });
 
                 last_reddit_id = posts
@@ -104,6 +105,18 @@ async fn main() -> anyhow::Result<()> {
 
         tokio::time::sleep(Duration::from_secs(30)).await;
     }
+}
+
+fn sub_matches(sub: &BasicThing<SubmissionData>, keywords: Vec<&str>) -> bool {
+    let title = sub.data.title.to_lowercase();
+    contains_any(&title, keywords.clone()) || contains_any(&sub.data.selftext, keywords.clone())
+}
+
+fn contains_any(s: &str, keywords: Vec<&str>) -> bool {
+    keywords.iter().any(|keyword| {
+        let s = &s.to_lowercase();
+        s.contains(&keyword.to_lowercase())
+    })
 }
 
 async fn get(pool: &sqlx::PgPool, key: &str, default: String) -> anyhow::Result<String> {
@@ -194,11 +207,4 @@ async fn handle_requests(pool: &sqlx::PgPool, api: &AsyncApi, offset: i64) -> an
     }
 
     Ok(new_offset)
-}
-
-fn contains_any(s: &str, keywords: Vec<&str>) -> bool {
-    keywords.iter().any(|keyword| {
-        let s = &s.to_lowercase();
-        s.contains(&keyword.to_lowercase())
-    })
 }
