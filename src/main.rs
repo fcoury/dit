@@ -157,12 +157,19 @@ async fn get_subscribers(pool: &sqlx::PgPool) -> anyhow::Result<HashSet<i64>> {
     Ok(subscribers)
 }
 
-async fn add_subscriber(pool: &sqlx::PgPool, chat_id: i64) -> anyhow::Result<()> {
-    sqlx::query("INSERT INTO subscribers (chat_id) VALUES ($1)")
-        .bind(chat_id)
-        .execute(pool)
-        .await?;
-    Ok(())
+async fn add_subscriber(pool: &sqlx::PgPool, chat_id: i64) -> anyhow::Result<bool> {
+    let result =
+        sqlx::query("INSERT INTO subscribers (chat_id) VALUES ($1) ON CONFLICT DO NOTHING")
+            .bind(chat_id)
+            .execute(pool)
+            .await?;
+
+    // Check if a row was inserted
+    if result.rows_affected() == 0 {
+        Ok(false)
+    } else {
+        Ok(true)
+    }
 }
 
 async fn remove_subscriber(pool: &sqlx::PgPool, chat_id: i64) -> anyhow::Result<()> {
