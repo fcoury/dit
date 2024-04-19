@@ -109,7 +109,8 @@ async fn main() -> anyhow::Result<()> {
 
 fn sub_matches(sub: &BasicThing<SubmissionData>, keywords: Vec<&str>) -> bool {
     let title = sub.data.title.to_lowercase();
-    contains_any(&title, keywords.clone()) || contains_any(&sub.data.selftext, keywords.clone())
+    let text = sub.data.selftext.to_lowercase();
+    contains_any(&title, keywords.clone()) || contains_any(&text, keywords.clone())
 }
 
 fn contains_any(s: &str, keywords: Vec<&str>) -> bool {
